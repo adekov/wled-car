@@ -1,0 +1,80 @@
+#pragma once
+
+#include "wled.h"
+
+/*
+  Usermod: Car Logic Controller
+  GPIO12 = GABARITS
+  GPIO14 = DOOR
+  Logic:
+  
+  - Габариты ON  → пресет 1 (если дверь закрыта), иначе пресет 2
+  - Габариты OFF → пресет 3 (если дверь закрыта), иначе пресет 2
+  - Дверь OPEN  → пресет 2 (всегда приоритет)
+  - Дверь CLOSE → вернуться:
+        если габариты ON → пресет 1
+        если габариты OFF → пресет 3
+*/
+
+class UsermodCarLogic : public Usermod {
+private:
+  const uint8_t pinGabarits = 12;
+  const uint8_t pinDoor = 14;
+
+  bool lastGabarits = false;
+  bool lastDoor = false;
+
+  unsigned long lastTrigger = 0;
+  const unsigned long debounceMs = 120;
+
+  void applyPreset(uint8_t preset) {
+    applyPresetImmediately(preset);
+  }
+
+public:
+  void setup() {
+    pinMode(pinGabarits, INPUT_PULLUP);
+    pinMode(pinDoor, INPUT_PULLUP);
+
+    lastGabarits = !digitalRead(pinGabarits);
+    lastDoor = !digitalRead(pinDoor);
+  }
+
+  void loop() {
+    if (millis() - lastTrigger < debounceMs) return;
+
+    bool gabarits = !digitalRead(pinGabarits);
+    bool door = !digitalRead(pinDoor);
+
+    // Door changed
+    if (door != lastDoor) {
+      lastDoor = door;
+      lastTrigger = millis();
+
+      if (door) {
+        applyPreset(2);  // Door open
+      } else {
+        if (gabarits) applyPreset(1);
+        else applyPreset(3);
+      }
+      return;
+    }
+
+    // Gabarits changed
+    if (gabarits != lastGabarits) {
+      lastGabarits = gabarits;
+      lastTrigger = millis();
+
+      if (gabarits) {
+        if (door) applyPreset(2);
+        else applyPreset(1);
+      } else {
+        if (door) applyPreset(2);
+        else applyPreset(3);
+      }
+      return;
+    }
+  }
+
+  uint16_t getId() { return USERMOD_ID_UNSPECIFIED; }
+};
